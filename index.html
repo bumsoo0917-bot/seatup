@@ -145,6 +145,16 @@
     </div>
   </div>
 
+  <dialog id="adminLogin" class="bg-slate-900 text-white border border-slate-700 rounded-2xl p-6 w-full max-w-sm backdrop:bg-black/75">
+    <form id="adminForm">
+      <h2 class="text-lg font-bold mb-4">관리자 로그인</h2>
+      <label for="adminPassword">비밀번호</label>
+      <input id="adminPassword" type="password" autocomplete="current-password" required class="w-full p-3 mt-2 rounded-xl bg-slate-950 border border-slate-700">
+      <p id="adminError" role="alert" class="text-sm text-rose-300 my-3"></p>
+      <button type="button" onclick="document.getElementById('adminLogin').close()" class="p-3">취소</button>
+      <button id="adminSubmit" type="submit" class="p-3 rounded-xl bg-amber-400 text-slate-950 font-bold">로그인</button>
+    </form>
+  </dialog>
   <script>
     // B~F열 전체 (3~15번, 총 65석 풀)
     const SEAT_ROWS = ['B', 'C', 'D', 'E', 'F'];
@@ -329,12 +339,43 @@
       document.getElementById('ticketModal').classList.remove('flex');
     }
 
+    let adminUnlocked = false;
     function toggleAdmin() {
-      document.getElementById('adminPanel').classList.toggle('hidden');
+      const panel = document.getElementById('adminPanel');
+      if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        adminUnlocked = false;
+        return;
+      }
+      document.getElementById('adminForm').reset();
+      document.getElementById('adminError').textContent = '';
+      document.getElementById('adminLogin').showModal();
     }
+    document.getElementById('adminForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('adminSubmit');
+      button.disabled = true;
+      try {
+        const response = await fetch('/api/admin-login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: document.getElementById('adminPassword').value })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '로그인 실패');
+        adminUnlocked = true;
+        document.getElementById('adminLogin').close();
+        document.getElementById('adminPanel').classList.remove('hidden');
+      } catch (error) {
+        document.getElementById('adminError').textContent = error.message;
+      } finally {
+        document.getElementById('adminPassword').value = '';
+        button.disabled = false;
+      }
+    });
 
     // 엑셀(CSV) 다운로드
     function downloadCSV() {
+      if (!adminUnlocked) return;
       let csv = "\uFEFF좌석번호,학년,반,번호,배정일시\n";
       ALL_SEATS.forEach(seat => {
         const info = currentAssignments[seat];
@@ -351,6 +392,7 @@
     }
 
     async function resetAllSeats() {
+      if (!adminUnlocked) return;
       if (isDrawing || !confirm('정말로 모든 학생의 좌석 배정 데이터를 삭제할까요?')) return;
       try {
         if (window.seatBackend) {
@@ -404,4 +446,5 @@
   </script>
 </body>
 </html>
+
 
