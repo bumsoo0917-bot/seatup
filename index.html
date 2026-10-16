@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>메가박스 3관 실시간 좌석 추첨기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="firebase-config.js"></script>
+  <!-- Firebase SDK 모듈 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get, child, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const config = window.FIREBASE_CONFIG;
+    if (config && config.apiKey && config.databaseURL) {
+      try {
+        const app = initializeApp(config);
+        const db = getDatabase(app);
+        window.seatBackend = { db, ref, onValue, set, runTransaction };
+        window.dispatchEvent(new Event('backend-ready'));
+      } catch (error) { window.backendError = error.message; }
+    }  </script>
+
+  <style>
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px #38bdf8); transform: scale(1.05); }
+      50% { filter: drop-shadow(0 0 22px #eab308); transform: scale(1.18); }
+    }
+    .winner-seat {
+      animation: pulseGlow 0.8s infinite ease-in-out;
+      z-index: 20;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-3 sm:p-6 font-sans select-none">
+
+  <!-- 메인 컨테이너 -->
+  <div class="w-full max-w-5xl flex flex-col items-center">
+    
+    <!-- 타이틀 헤더 -->
+    <header class="text-center mb-6 w-full relative">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-sky-500/30 text-sky-400 text-xs font-semibold mb-2 shadow">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span id="connectionStatus">체험 모드 · 이 브라우저에 저장</span>
+      </div>
+      <h1 class="text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-amber-300 to-yellow-500 tracking-tight">
+        🎬 메가박스 3관 자리 추첨
+      </h1>
+      <p class="text-slate-400 text-xs sm:text-sm mt-1">학년, 반, 번호를 선택하고 나만의 좌석을 뽑으세요!</p>
+
+      <!-- 관리자 버튼 -->
+      <button onclick="toggleAdmin()" class="absolute right-0 top-0 text-slate-400 hover:text-white text-xs bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded-lg transition">
+        ⚙️ 관리자
+      </button>
+    </header>
+
+    <!-- 관리자 패널 -->
+    <div id="adminPanel" class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-5 hidden shadow-xl">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <span class="text-xs text-amber-400 font-bold">🛠️ 전체 학급 관리 도구</span>
+        <div class="flex gap-2">
+          <button onclick="downloadCSV()" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-lg transition">
+            📊 엑셀(CSV) 저장
+          </button>
+          <button onclick="resetAllSeats()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition">
+            🔄 전체 배정 초기화
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 반별 범례 -->
+    <div class="flex flex-wrap items-center justify-center gap-2 mb-6 text-xs font-semibold">
+      <span class="px-3 py-1 rounded-full bg-sky-950 border border-sky-500 text-sky-300">5-1 (15명)</span>
+      <span class="px-3 py-1 rounded-full bg-emerald-950 border border-emerald-500 text-emerald-300">5-2 (14명)</span>
+      <span class="px-3 py-1 rounded-full bg-amber-950 border border-amber-500 text-amber-300">6-1 (13명)</span>
+      <span class="px-3 py-1 rounded-full bg-pink-950 border border-pink-500 text-pink-300">6-2 (14명)</span>
+    </div>
+
+    <!-- 학생 추첨 카드 -->
+    <div class="w-full max-w-lg bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl mb-8 flex flex-col items-center">
+      <div class="grid grid-cols-3 gap-2 w-full mb-3">
+        <div>
+          <label class="text-[11px] text-slate-400 font-bold">학년</label>
+          <select id="gradeSel" onchange="onClassChange()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 text-sm font-bold mt-1 outline-none">
+            <option value="5">5학년</option>
+            <option value="6">6학년</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 font-bold">반</label>
+          <select id="classSel" onchange="onClassChange()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 text-sm font-bold mt-1 outline-none">
+            <option value="1">1반</option>
+            <option value="2">2반</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 font-bold">번호</label>
+          <select id="numSel" onchange="checkStatus()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 text-sm font-bold mt-1 outline-none">
+          </select>
+        </div>
+      </div>
+
+      <div id="statusNotice" class="w-full py-2 px-3 rounded-lg bg-slate-950 border border-slate-800 text-center text-xs font-semibold mb-4 text-slate-400">
+        선택한 학생의 배정 현황을 확인 중입니다...
+      </div>
+
+      <button id="drawBtn" onclick="executeDraw()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl text-base shadow-lg transition active:scale-95">
+        🎲 두근두근 자리 뽑기!
+      </button>
+    </div>
+
+    <!-- 좌석표 뷰포트 -->
+    <div class="w-full bg-slate-900/80 border border-slate-800 rounded-3xl p-4 sm:p-6 flex flex-col items-center overflow-x-auto">
+      <div class="w-[620px] sm:w-[700px] h-8 bg-slate-800 border-t-2 border-sky-400 rounded-t-lg flex items-center justify-center font-bold tracking-[0.4em] text-xs text-sky-300 shadow mb-8">
+        S C R E E N
+      </div>
+
+      <div id="boardGrid" class="flex flex-col gap-2 min-w-[700px]">
+        <!-- 좌석 동적 생성 -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 결과 알림 팝업 모달 -->
+  <div id="ticketModal" class="fixed inset-0 bg-black/85 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="bg-slate-900 border-2 border-amber-400 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl">
+      <div class="text-3xl mb-2">🎉</div>
+      <h3 class="text-xl font-black text-white mb-1">좌석 확정!</h3>
+      <p id="modalStudentName" class="text-sm font-bold text-amber-300 mb-4"></p>
+      <div class="bg-slate-950 border border-amber-400/50 rounded-2xl p-4 mb-4">
+        <span class="text-xs text-slate-400 block mb-1">배정된 좌석 번호</span>
+        <div id="modalSeatId" class="text-4xl font-black text-yellow-400 font-mono"></div>
+      </div>
+      <button onclick="closeModal()" class="w-full py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-sm transition">
+        확인하고 좌석 보러 가기 🍿
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // B~F열 전체 (3~15번, 총 65석 풀)
+    const SEAT_ROWS = ['B', 'C', 'D', 'E', 'F'];
+    const ALL_SEATS = [];
+    SEAT_ROWS.forEach(r => {
+      for (let i = 3; i <= 15; i++) {
+        ALL_SEATS.push(`${r}${i}`);
+      }
+    });
+
+    const CAPACITIES = { '5-1': 15, '5-2': 14, '6-1': 13, '6-2': 14 };
+    let currentAssignments = {};
+    let isDrawing = false;
+    let backendReady = false;
+    const STORAGE_KEY = 'megabox-seat-demo-v1';
+    function readLocal() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+      catch { return {}; }
+    }
+    function applyAssignments(data) {
+      currentAssignments = data || {};
+      renderBoard();
+      checkStatus();
+    }
+
+    // 학년/반에 따른 번호 옵션 렌더링
+    function onClassChange() {
+      const g = document.getElementById('gradeSel').value;
+      const c = document.getElementById('classSel').value;
+      const max = CAPACITIES[`${g}-${c}`] || 15;
+      const sel = document.getElementById('numSel');
+      sel.innerHTML = '';
+      for (let i = 1; i <= max; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.innerText = `${i}번`;
+        sel.appendChild(opt);
+      }
+      checkStatus();
+    }
+
+    // 학생 중복 배정 여부 검사
+    function checkStatus() {
+      const g = document.getElementById('gradeSel').value;
+      const c = document.getElementById('classSel').value;
+      const n = document.getElementById('numSel').value;
+      const key = `${g}-${c}-${n}`;
+
+      let assignedSeat = null;
+      for (const [seat, info] of Object.entries(currentAssignments)) {
+        if (info && info.key === key) {
+          assignedSeat = seat;
+          break;
+        }
+      }
+
+      const notice = document.getElementById('statusNotice');
+      const btn = document.getElementById('drawBtn');
+
+      if (isDrawing) { btn.disabled = true; return; }
+      if (assignedSeat) {
+        notice.innerText = `⚠️ 이미 배정 완료된 학생입니다. (좌석: ${assignedSeat})`;
+        notice.className = 'w-full py-2 px-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-center text-xs font-bold mb-4 text-rose-300';
+        btn.disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
+      } else {
+        notice.innerText = `✨ ${g}학년 ${c}반 ${n}번 학생은 추첨 가능합니다.`;
+        notice.className = 'w-full py-2 px-3 rounded-lg bg-slate-950 border border-slate-800 text-center text-xs font-semibold mb-4 text-emerald-400';
+        btn.disabled = false;
+        btn.classList.remove('opacity-40', 'cursor-not-allowed');
+      }
+    }
+
+    // 좌석판 렌더링
+    function renderBoard(highlightSeat = null) {
+      const grid = document.getElementById('boardGrid');
+      grid.innerHTML = '';
+
+      SEAT_ROWS.forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'flex items-center gap-1.5 justify-center';
+
+        const label = document.createElement('div');
+        label.className = 'w-6 text-center font-black text-slate-500 text-sm';
+        label.innerText = row;
+        rowDiv.appendChild(label);
+
+        for (let num = 3; num <= 15; num++) {
+          const seatId = `${row}${num}`;
+          const info = currentAssignments[seatId];
+          const seatBox = document.createElement('div');
+          seatBox.id = `seat-${seatId}`;
+          seatBox.className = 'w-11 h-11 rounded-lg border flex flex-col items-center justify-center p-0.5 text-center transition';
+
+          if (info) {
+            let colorCls = 'bg-slate-800 border-slate-700 text-slate-200';
+            if (info.key.startsWith('5-1')) colorCls = 'bg-sky-200 border-sky-400 text-sky-950 font-bold';
+            else if (info.key.startsWith('5-2')) colorCls = 'bg-emerald-200 border-emerald-400 text-emerald-950 font-bold';
+            else if (info.key.startsWith('6-1')) colorCls = 'bg-amber-200 border-amber-400 text-amber-950 font-bold';
+            else if (info.key.startsWith('6-2')) colorCls = 'bg-pink-200 border-pink-400 text-pink-950 font-bold';
+
+            seatBox.className += ` ${colorCls}`;
+            seatBox.innerHTML = `
+              <span class="text-[9px] opacity-75">${seatId}</span>
+              <span class="text-[10px] font-black truncate w-full">${info.grade}-${info.classNum}_${info.studentNum}</span>
+            `;
+          } else {
+            seatBox.className += ' bg-slate-950 border-slate-800 text-slate-500';
+            seatBox.innerHTML = `
+              <span class="text-[10px] font-bold text-slate-400">${seatId}</span>
+              <span class="text-[8px] text-slate-600">빈자리</span>
+            `;
+          }
+
+          if (seatId === highlightSeat) {
+            seatBox.classList.add('winner-seat');
+          }
+
+          rowDiv.appendChild(seatBox);
+        }
+
+        grid.appendChild(rowDiv);
+      });
+    }
+
+    // 추첨 실행 (Firebase DB 트랜잭션/원자적 기록)
+    async function executeDraw() {
+      if (isDrawing) return;
+
+      const g = document.getElementById('gradeSel').value;
+      const c = document.getElementById('classSel').value;
+      const n = document.getElementById('numSel').value;
+      const key = `${g}-${c}-${n}`;
+
+      if (Object.values(currentAssignments).some(info => info.key === key)) return;
+      isDrawing = true;
+      ['gradeSel', 'classSel', 'numSel', 'drawBtn'].forEach(id => document.getElementById(id).disabled = true);
+      const studentData = { key, grade: Number(g), classNum: Number(c), studentNum: Number(n), assignedAt: new Date().toISOString() };
+      let pickedSeat;
+      function assign(data) {
+        data = data || {};
+        if (Object.values(data).some(info => info && info.key === key)) return;
+        const vacant = ALL_SEATS.filter(seat => !data[seat]);
+        if (!vacant.length) return;
+        pickedSeat = vacant[Math.floor(Math.random() * vacant.length)];
+        return { ...data, [pickedSeat]: studentData };
+      }
+      try {
+        if (window.seatBackend) {
+          if (!backendReady) throw new Error('실시간 데이터 연결이 완료될 때까지 기다려 주세요.');
+          const { db, ref, runTransaction } = window.seatBackend;
+          const result = await runTransaction(ref(db, 'assignments'), assign, { applyLocally: false });
+          if (!result.committed) throw new Error('이미 배정된 학생이거나 빈 좌석이 없습니다.');
+          applyAssignments(result.snapshot.val());
+          pickedSeat = Object.entries(currentAssignments).find(([, info]) => info.key === key)[0];
+        } else {
+          if (window.FIREBASE_CONFIG?.apiKey) throw new Error('Firebase 연결을 확인한 뒤 다시 시도해 주세요.');
+          const save = () => {
+            const updated = assign(readLocal());
+            if (!updated) throw new Error('이미 배정된 학생이거나 빈 좌석이 없습니다.');
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            applyAssignments(updated);
+          };
+          if (navigator.locks) await navigator.locks.request(STORAGE_KEY, save);
+          else save();
+        }
+        document.getElementById('modalStudentName').innerText = `${g}학년 ${c}반 ${n}번 학생`;
+        document.getElementById('modalSeatId').innerText = pickedSeat;
+        document.getElementById('ticketModal').classList.remove('hidden');
+        document.getElementById('ticketModal').classList.add('flex');
+        renderBoard(pickedSeat);
+      } catch (err) {
+        alert('좌석 저장 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        isDrawing = false;
+        ['gradeSel', 'classSel', 'numSel'].forEach(id => document.getElementById(id).disabled = false);
+        checkStatus();
+      }
+    }
+    function closeModal() {
+      document.getElementById('ticketModal').classList.add('hidden');
+      document.getElementById('ticketModal').classList.remove('flex');
+    }
+
+    function toggleAdmin() {
+      document.getElementById('adminPanel').classList.toggle('hidden');
+    }
+
+    // 엑셀(CSV) 다운로드
+    function downloadCSV() {
+      let csv = "\uFEFF좌석번호,학년,반,번호,배정일시\n";
+      ALL_SEATS.forEach(seat => {
+        const info = currentAssignments[seat];
+        if (info) {
+          csv += `"${seat}","${info.grade}","${info.classNum}","${info.studentNum}","${info.assignedAt}"\n`;
+        }
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `메가박스3관_좌석배정_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    async function resetAllSeats() {
+      if (isDrawing || !confirm('정말로 모든 학생의 좌석 배정 데이터를 삭제할까요?')) return;
+      try {
+        if (window.seatBackend) {
+          const { db, ref, set } = window.seatBackend;
+          await set(ref(db, 'assignments'), null);
+        } else {
+          if (window.FIREBASE_CONFIG?.apiKey) throw new Error('Firebase 연결을 확인해 주세요.');
+          localStorage.removeItem(STORAGE_KEY);
+          applyAssignments({});
+        }
+      } catch (err) { alert('초기화 실패: ' + err.message); }
+    }
+    function connectBackend() {
+      if (!window.seatBackend || window.backendSubscribed) return;
+      window.backendSubscribed = true;
+      const { db, ref, onValue } = window.seatBackend;
+      const status = document.getElementById('connectionStatus');
+      status.textContent = '실시간 데이터 연결 중…';
+      onValue(ref(db, 'assignments'), snapshot => {
+        backendReady = true;
+        applyAssignments(snapshot.val());
+      }, error => {
+        backendReady = false;
+        status.textContent = '데이터 연결 실패 · 설정과 DB 규칙을 확인하세요';
+        document.getElementById('drawBtn').disabled = true;
+      });
+      onValue(ref(db, '.info/connected'), snapshot => {
+        backendReady = snapshot.val() === true;
+        status.textContent = backendReady ? '실시간 다중 교실 동기화 연결됨' : '연결 끊김 · 재연결 대기 중';
+      });
+    }
+    window.addEventListener('storage', event => {
+      if (event.key === STORAGE_KEY && !window.FIREBASE_CONFIG?.apiKey) applyAssignments(readLocal());
+    });
+    window.addEventListener('backend-ready', connectBackend);
+    window.addEventListener('DOMContentLoaded', () => {
+      onClassChange();
+      if (window.FIREBASE_CONFIG?.apiKey) {
+        document.getElementById('connectionStatus').textContent = 'Firebase 연결 중 · 연결되지 않으면 설정과 인터넷을 확인하세요';
+        renderBoard();
+      } else applyAssignments(readLocal());
+      connectBackend();
+    });
+  </script>
+</body>
+</html>
