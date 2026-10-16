@@ -11,14 +11,20 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, onValue, set, get, child, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
     const config = window.FIREBASE_CONFIG;
     if (config && config.apiKey && config.databaseURL) {
       try {
         const app = initializeApp(config);
+        await signInAnonymously(getAuth(app));
         const db = getDatabase(app);
         window.seatBackend = { db, ref, onValue, set, runTransaction };
         window.dispatchEvent(new Event('backend-ready'));
-      } catch (error) { window.backendError = error.message; }
+      } catch (error) {
+        window.backendError = error.message;
+        window.dispatchEvent(new Event('backend-error'));
+      }
     }  </script>
 
   <style>
@@ -380,6 +386,12 @@
       if (event.key === STORAGE_KEY && !window.FIREBASE_CONFIG?.apiKey) applyAssignments(readLocal());
     });
     window.addEventListener('backend-ready', connectBackend);
+    function showBackendError() {
+      const status = document.getElementById('connectionStatus');
+      if (status) status.textContent = 'Firebase 인증 실패: ' + window.backendError;
+      document.getElementById('drawBtn').disabled = true;
+    }
+    window.addEventListener('backend-error', showBackendError);
     window.addEventListener('DOMContentLoaded', () => {
       onClassChange();
       if (window.FIREBASE_CONFIG?.apiKey) {
@@ -387,7 +399,9 @@
         renderBoard();
       } else applyAssignments(readLocal());
       connectBackend();
+      if (window.backendError) showBackendError();
     });
   </script>
 </body>
 </html>
+
