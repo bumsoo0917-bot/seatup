@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>메가박스 3관 실시간 좌석 추첨기</title>
+  <title>메가박스 1관 실시간 좌석 추첨기</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="firebase-config.js"></script>
   <!-- Firebase SDK 모듈 -->
@@ -50,9 +50,9 @@
         <span id="connectionStatus">체험 모드 · 이 브라우저에 저장</span>
       </div>
       <h1 class="text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-amber-300 to-yellow-500 tracking-tight">
-        🎬 메가박스 3관 자리 추첨
+        🎬 메가박스 1관 자리 추첨
       </h1>
-      <p class="text-slate-400 text-xs sm:text-sm mt-1">3관 B~F열 · 3~15번 · 총 65석<br>학년, 반, 번호를 선택하고 나만의 좌석을 뽑으세요!</p>
+      <p class="text-slate-400 text-xs sm:text-sm mt-1">1관 C~H열 · 3~14번 · 총 72석<br>학년, 반, 번호를 선택하고 나만의 좌석을 뽑으세요!</p>
 
       <!-- 관리자 버튼 -->
       <button onclick="toggleAdmin()" class="absolute right-0 top-0 text-slate-400 hover:text-white text-xs bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded-lg transition">
@@ -158,21 +158,21 @@
     </form>
   </dialog>
   <script>
-    // 3관 B~F열, 각 3~15번 (총 65석)
-    const SEAT_ROWS = ['B', 'C', 'D', 'E', 'F'];
+    // 1관 C~H열, 각 3~14번 (총 72석)
+    const SEAT_ROWS = ['C', 'D', 'E', 'F', 'G', 'H'];
     const ALL_SEATS = [];
     SEAT_ROWS.forEach(r => {
-      for (let i = 3; i <= 15; i++) {
+      for (let i = 3; i <= 14; i++) {
         ALL_SEATS.push(`${r}${i}`);
       }
     });
 
-    const ASSIGNMENTS_PATH = 'assignments';
+    const ASSIGNMENTS_PATH = 'assignments/hall1-moved-c3-h14';
     const CAPACITIES = { '5-1': 15, '5-2': 14, '6-1': 13, '6-2': 14 };
     let currentAssignments = {};
     let isDrawing = false;
     let backendReady = false;
-    const STORAGE_KEY = 'megabox-seat-demo-v1';
+    const STORAGE_KEY = 'megabox-hall1-moved-c3-h14-demo-v1';
     function readLocal() {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
       catch { return {}; }
@@ -247,6 +247,7 @@
       SEAT_ROWS.forEach(row => {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'flex items-center gap-1.5 justify-center';
+        if (row === 'E') rowDiv.style.marginTop = '24px';
 
 
         const label = document.createElement('div');
@@ -254,7 +255,7 @@
         label.innerText = row;
         rowDiv.appendChild(label);
 
-        for (let num = 3; num <= 15; num++) {
+        for (let num = 3; num <= 14; num++) {
           const seatId = `${row}${num}`;
           const info = currentAssignments[seatId];
           const seatBox = document.createElement('div');
@@ -399,7 +400,7 @@
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `메가박스3관_좌석배정_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `메가박스1관_좌석배정_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
@@ -464,6 +465,7 @@
   </script>
 </body>
 </html>
+
 
 
 
