@@ -89,6 +89,7 @@
         <div>
           <label class="text-[11px] text-slate-400 font-bold">학년</label>
           <select id="gradeSel" onchange="onClassChange()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 text-sm font-bold mt-1 outline-none">
+            <option value="" selected>학년 선택</option>
             <option value="5">5학년</option>
             <option value="6">6학년</option>
           </select>
@@ -96,6 +97,7 @@
         <div>
           <label class="text-[11px] text-slate-400 font-bold">반</label>
           <select id="classSel" onchange="onClassChange()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-2.5 text-sm font-bold mt-1 outline-none">
+            <option value="" selected>반 선택</option>
             <option value="1">1반</option>
             <option value="2">2반</option>
           </select>
@@ -111,7 +113,7 @@
         선택한 학생의 배정 현황을 확인 중입니다...
       </div>
 
-      <button id="drawBtn" onclick="executeDraw()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl text-base shadow-lg transition active:scale-95">
+      <button id="drawBtn" disabled onclick="executeDraw()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl text-base shadow-lg transition active:scale-95">
         🎲 두근두근 자리 뽑기!
       </button>
     </div>
@@ -185,9 +187,10 @@
     function onClassChange() {
       const g = document.getElementById('gradeSel').value;
       const c = document.getElementById('classSel').value;
-      const max = CAPACITIES[`${g}-${c}`] || 15;
+      const max = CAPACITIES[`${g}-${c}`] || 0;
       const sel = document.getElementById('numSel');
-      sel.innerHTML = '';
+      sel.innerHTML = '<option value="" selected>번호 선택</option>';
+      sel.disabled = !max;
       for (let i = 1; i <= max; i++) {
         const opt = document.createElement('option');
         opt.value = i;
@@ -216,6 +219,13 @@
       const btn = document.getElementById('drawBtn');
 
       if (isDrawing) { btn.disabled = true; return; }
+      if (!g || !c || !n) {
+        notice.innerText = '학년, 반, 번호를 모두 선택해 주세요.';
+        notice.className = 'w-full py-2 px-3 rounded-lg bg-slate-950 border border-slate-800 text-center text-xs font-semibold mb-4 text-slate-400';
+        btn.disabled = true;
+        btn.classList.add('opacity-40', 'cursor-not-allowed');
+        return;
+      }
       if (assignedSeat) {
         notice.innerText = `⚠️ 이미 배정 완료된 학생입니다. (좌석: ${assignedSeat})`;
         notice.className = 'w-full py-2 px-3 rounded-lg bg-rose-950/60 border border-rose-500/50 text-center text-xs font-bold mb-4 text-rose-300';
@@ -291,6 +301,7 @@
       const n = document.getElementById('numSel').value;
       const key = `${g}-${c}-${n}`;
 
+      if (!g || !c || !n || !CAPACITIES[`${g}-${c}`] || Number(n) < 1 || Number(n) > CAPACITIES[`${g}-${c}`]) return;
       if (Object.values(currentAssignments).some(info => info.key === key)) return;
       isDrawing = true;
       ['gradeSel', 'classSel', 'numSel', 'drawBtn'].forEach(id => document.getElementById(id).disabled = true);
@@ -448,6 +459,7 @@
   </script>
 </body>
 </html>
+
 
 
 
