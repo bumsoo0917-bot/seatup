@@ -1,8 +1,0 @@
-{
-  "rules": {
-    "assignments": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    }
-  }
-}
